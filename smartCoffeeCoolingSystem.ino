@@ -21,10 +21,10 @@ const int IR_PIN = A2;
 const int PIR_PIN = 42;
 const int BUZZER_PIN = 12; 
 
-float HIGH_TEMP = 28;
+float HIGH_TEMP = 75;
 // SHOULD BE 60 AND 50
-float DESIRED_MAX_TEMP = 20;
-float DESIRED_MIN_TEMP = 10; 
+float DESIRED_MAX_TEMP = 63;
+float DESIRED_MIN_TEMP = 48; 
 
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiClient espClient;
@@ -93,49 +93,13 @@ void loop()
 
   float temperature = dht.readTemperature();    // Read temperature from DHT11 Sensor
   int irData = !digitalRead(IR_PIN);             // Read IR sensor data
-  int pirData = !digitalRead(PIR_PIN);           // Read PIR sensor data
+  int pirData = digitalRead(PIR_PIN);           // Read PIR sensor data
 
   char payload[30];
   sprintf(payload, "%.2f || %d || %d", temperature, irData, pirData);
   client.publish(MQTT_TOPIC, payload);
 
-  // Check the temperature of coffee
-  indicateTemperature(temperature);
-
-  // Check if a cup is detected using IR sensor
-  // Check if the drink is high temperature
-  if (irData == HIGH)
-  {
-    // Indicate the presence of coffee cup on coaster
-    digitalWrite(WHITE_LED_PIN, HIGH);       
-
-    // Indicate human presence
-    if(pirData == HIGH)                      
-    {
-      // Warning Orange LED ON to notify user
-      digitalWrite(WARNING_LED_PIN, HIGH);  
-      tone(BUZZER_PIN, 5000);
-      Serial.println("Motion Detected");
-    }
-    else
-    {
-      digitalWrite(WARNING_LED_PIN, LOW);
-      noTone(BUZZER_PIN);
-      Serial.println("Motion not Detected");
-    }
-  }
-  else
-  {
-    digitalWrite(WHITE_LED_PIN, LOW);
-  }
-}
-
-void notifyUser()
-{
-  //play buzzer
-  tone(BUZZER_PIN, 1000);
-  delay(5000);
-  noTone(BUZZER_PIN);
+  startSystem(temperature, irData, pirData);
 }
 
 void activateCoolingSystem()
@@ -148,43 +112,72 @@ void deactivateCoolingSystem()
   digitalWrite(RELAY_PIN, LOW);
 }
 
-void indicateTemperature(float temperature)
-{
-  // TEMPERATURE IS HIGHER THAN OR EQUAL TO 80
-  if (temperature >= HIGH_TEMP)
-  {
-    digitalWrite(RED_LED_PIN, HIGH);    // Red LED ON
-    digitalWrite(YELLOW_LED_PIN, LOW);  // Yellow LED OFF
-    digitalWrite(GREEN_LED_PIN, LOW);   // Green LED OFF
-    digitalWrite(BLUE_LED_PIN, LOW);    // Blue LED OFF
-    activateCoolingSystem();            // Turn on the fan
-  }
+void activateBuzzer() {
+  // Play buzzer
+  tone(BUZZER_PIN, 1000);
+  delay(5000);
+}
 
-  //TEMPERATURE IS HIGHER THAN 60 OR LOWER THAN 80
-  if (temperature > DESIRED_MAX_TEMP && temperature < HIGH_TEMP)
-  {
-    digitalWrite(RED_LED_PIN, LOW);      // Red LED OFF
-    digitalWrite(YELLOW_LED_PIN, HIGH);  // Yellow LED ON
-    digitalWrite(GREEN_LED_PIN, LOW);    // Green LED OFF
-    digitalWrite(BLUE_LED_PIN, LOW);     // Blue LED OFF
-    activateCoolingSystem();             // Turn on the fan
-  }
-  //TEMPERATURE IS BETWEEN 50-60
-  else if (temperature >= DESIRED_MIN_TEMP && temperature <= DESIRED_MAX_TEMP)
-  {
-    digitalWrite(RED_LED_PIN, LOW);     // Red LED OFF
-    digitalWrite(YELLOW_LED_PIN, LOW);  // Yellow LED OFF
-    digitalWrite(GREEN_LED_PIN, HIGH);  // Green LED ON
-    digitalWrite(BLUE_LED_PIN, LOW);    // Blue LED OFF
-    deactivateCoolingSystem();          // Turn off the fan
-    //notifyUser();
-  }
-  else
-  {
-    digitalWrite(RED_LED_PIN, LOW);     // Red LED OFF
-    digitalWrite(YELLOW_LED_PIN, LOW);  // Yellow LED OFF
-    digitalWrite(GREEN_LED_PIN, LOW);   // Green LED OFF
-    digitalWrite(BLUE_LED_PIN, HIGH);   // Blue LED ON
-    deactivateCoolingSystem();          // Turn off the fan
+void deactivateBuzzer() {
+    noTone(BUZZER_PIN);
+}
+
+void startSystem(float temp, int irValue, int pirValue) 
+{ 
+  if (pirValue == LOW) 
+  { 
+    digitalWrite(WHITE_LED_PIN, LOW);
+  } 
+  else 
+  { // Cup presence
+    digitalWrite(WHITE_LED_PIN, HIGH);
+
+    if (temp >= HIGH_TEMP) { // more than 75 degrees Celsius
+      digitalWrite(RED_LED_PIN, HIGH);
+      digitalWrite(YELLOW_LED_PIN, LOW);
+      digitalWrite(GREEN_LED_PIN, LOW);
+      digitalWrite(BLUE_LED_PIN, LOW);
+      activateCoolingSystem();
+      if (irValue == HIGH) {
+        digitalWrite(WARNING_LED_PIN, HIGH);
+        Serial.println("Hand Motion detected");
+      }
+      else{
+        digitalWrite(WARNING_LED_PIN, LOW);
+        Serial.println("Motion stopped");
+      }
+    } 
+    else if (temp >= DESIRED_MAX_TEMP && temp < HIGH_TEMP) {
+      digitalWrite(RED_LED_PIN, LOW);
+      digitalWrite(YELLOW_LED_PIN, HIGH);
+      digitalWrite(GREEN_LED_PIN, LOW);
+      digitalWrite(BLUE_LED_PIN, LOW);
+      activateCoolingSystem();
+      if (irValue == HIGH) {
+        digitalWrite(WARNING_LED_PIN, HIGH);
+        Serial.println("Hand Motion detected");
+      }
+      else{
+        digitalWrite(WARNING_LED_PIN, LOW);
+        Serial.println("Motion stopped");
+      }
+    } 
+    else if (temp >= DESIRED_MIN_TEMP && temp < DESIRED_MAX_TEMP) {
+      digitalWrite(RED_LED_PIN, LOW);
+      digitalWrite(YELLOW_LED_PIN, LOW);
+      digitalWrite(GREEN_LED_PIN, HIGH);
+      digitalWrite(BLUE_LED_PIN, LOW);
+      deactivateCoolingSystem();
+      activateBuzzer();
+      if (irValue == HIGH) {
+        Serial.println("Hand Motion detected");
+        deactivateBuzzer();
+      }
+    } else if (temp < DESIRED_MIN_TEMP) {
+      digitalWrite(RED_LED_PIN, LOW);
+      digitalWrite(YELLOW_LED_PIN, LOW);
+      digitalWrite(GREEN_LED_PIN, LOW);
+      digitalWrite(BLUE_LED_PIN, HIGH);
+    }
   }
 }
